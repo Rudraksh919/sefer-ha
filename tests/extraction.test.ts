@@ -80,7 +80,6 @@ describe('OpenRouter extraction', () => {
       async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(modelOutput) } }] }), { status: 200 }),
     )
 
-    expect(result.flags).toHaveLength(1)
-    expect(result.flags[0].field).toBe('totals.assists')
+    expect(result.flags.map((flag) => flag.field)).toContain('totals.assists')
   })
 })

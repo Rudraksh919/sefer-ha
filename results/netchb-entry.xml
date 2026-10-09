@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<entry xmlns="http://www.netchb.com/xml/entry" xmlns:data="http://www.netchb.com/xml/data">
+  <entry-no><system-generated /></entry-no>
+  <header>
+    
+    <importer-name>NORTHBOUND OUTFITTERS, INC.</importer-name>
+    <ultimate-consignee><consignee-name>CASCADE FULFILLMENT PARTNERS LLC</consignee-name></ultimate-consignee>
+    <processing-port>3002</processing-port>
+    <entry-port>3002</entry-port>
+    <entry-date>2026-10-14</entry-date>
+    <entry-type>01</entry-type>
+    
+    <charges>4035</charges>
+    <gross-weight>1930</gross-weight>
+    <total-entry-value>27079</total-entry-value>
+    <description>MEN&apos;S CREW NECK SHORT SLEEVE T-SHIRT 100% Cotton single jersey, 160 GS</description>
+    <state-destination>WA</state-destination>
+    <vessel-name>PACIFIC ARGOS</vessel-name>
+    <mode-transportation>11</mode-transportation>
+    <unlading-port>3002</unlading-port>
+    <arrival-date>2026-10-14</arrival-date>
+    <carrier-code>OPLU</carrier-code>
+    <voyage-no>041E</voyage-no>
+  </header>
+  <manifest><bill-of-lading><master-scac>OPLU</master-scac><master-bill>SG260917735</master-bill><house-scac>BMLV</house-scac><house-bill>HCM26090418</house-bill><quantity>138</quantity><unit>CTN</unit></bill-of-lading></manifest>
+  <containers><container-number>OPLU3041722</container-number></containers>
+  <invoices>
+    <invoice>
+      <invoice-no>KBASNB26-0912</invoice-no>
+      
+      <line-items><line-item><country-origin>VN</country-origin><manufacturer-id>3702148865</manufacturer-id><tariffs><tariff><tariff-no>610910</tariff-no><value>6480.00</value><quantity1>2400</quantity1><unit-of-measure1>PCS</unit-of-measure1></tariff></tariffs><lading-port>55224</lading-port><gross-weight>480</gross-weight></line-item><line-item><country-origin>VN</country-origin><manufacturer-id>3702148865</manufacturer-id><tariffs><tariff><tariff-no>611020</tariff-no><value>8880.00</value><quantity1>1200</quantity1><unit-of-measure1>PCS</unit-of-measure1></tariff></tariffs><lading-port>55224</lading-port><gross-weight>774</gross-weight></line-item><line-item><country-origin>VN</country-origin><manufacturer-id>3702148865</manufacturer-id><tariffs><tariff><tariff-no>620342</tariff-no><value>6255.00</value><quantity1>900</quantity1><unit-of-measure1>PCS</unit-of-measure1></tariff></tariffs><lading-port>55224</lading-port><gross-weight>522</gross-weight></line-item><line-item><country-origin>VN</country-origin><manufacturer-id>3702148865</manufacturer-id><tariffs><tariff><tariff-no>620640</tariff-no><value>5440.00</value><quantity1>600</quantity1><unit-of-measure1>PCS</unit-of-measure1></tariff></tariffs><lading-port>55224</lading-port><gross-weight>106</gross-weight></line-item><line-item><country-origin>BD</country-origin><manufacturer-id>BDSPGAR41GAZ</manufacturer-id><tariffs><tariff><tariff-no>610610</tariff-no><value>24.00</value><quantity1>24</quantity1><unit-of-measure1>PCS</unit-of-measure1></tariff></tariffs><lading-port>55224</lading-port><gross-weight>6</gross-weight></line-item>
+      </line-items>
+    </invoice>
+  </invoices>
+</entry>

@@ -22,8 +22,8 @@ function toDataUrl(file: Blob): Promise<string> {
   })
 }
 
-async function renderPage(page: PDFPageProxy): Promise<string> {
-  const viewport = page.getViewport({ scale: 1.5 })
+async function renderPage(page: PDFPageProxy, scale: number, quality: number): Promise<string> {
+  const viewport = page.getViewport({ scale })
   const canvas = document.createElement('canvas')
   canvas.width = Math.ceil(viewport.width)
   canvas.height = Math.ceil(viewport.height)
@@ -31,26 +31,39 @@ async function renderPage(page: PDFPageProxy): Promise<string> {
   if (!context) throw new Error('Unable to render PDF page.')
 
   await page.render({ canvas, canvasContext: context, viewport }).promise
-  return canvas.toDataURL('image/jpeg', 0.85)
+  return canvas.toDataURL('image/jpeg', quality)
+}
+
+// Text items come with positions: start a new line whenever the baseline moves so labels stay next to their values.
+function pageText(items: Array<{ str?: string; transform?: number[]; hasEOL?: boolean }>): string {
+  let text = ''
+  let lastY: number | null = null
+  for (const item of items) {
+    if (item.str === undefined) continue
+    const y = item.transform?.[5] ?? 0
+    const separator = lastY === null ? '' : Math.abs(y - lastY) > 2 ? '\n' : ' '
+    text += separator + item.str
+    lastY = y
+  }
+  return text
 }
 
 async function readPdf(file: File): Promise<ExtractionRequest['documents'][number]> {
   const document = await getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise
   const textParts: string[] = []
+  const images: string[] = []
 
-  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+  // Scans (no text layer) go as high-resolution images so handwriting and stamps stay legible. Digital pages go as
+  // exact text plus a light image, because a text layer loses the table layout that ties labels to values.
+  for (let pageNumber = 1; pageNumber <= Math.min(document.numPages, maxPdfPages); pageNumber += 1) {
     const page = await document.getPage(pageNumber)
-    const content = await page.getTextContent()
-    textParts.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' '))
+    const text = pageText((await page.getTextContent()).items as Parameters<typeof pageText>[0]).trim()
+    const digital = text.length >= 40
+    if (digital) textParts.push(`--- page ${pageNumber} ---\n${text}`)
+    images.push(await (digital ? renderPage(page, 1.5, 0.8) : renderPage(page, 2.5, 0.92)))
   }
 
-  const text = textParts.join('\n').trim()
-  if (text.length >= 100) return { name: file.name, text }
-
-  const pages = await Promise.all(
-    Array.from({ length: Math.min(document.numPages, maxPdfPages) }, async (_, index) => renderPage(await document.getPage(index + 1))),
-  )
-  return { name: file.name, images: pages }
+  return { name: file.name, ...(textParts.length ? { text: textParts.join('\n') } : {}), ...(images.length ? { images } : {}) }
 }
 
 export async function prepareDocuments(files: File[]): Promise<ExtractionRequest> {

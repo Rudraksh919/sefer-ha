@@ -1,5 +1,5 @@
 import { resolveForeignPortCode, resolvePortCode } from './netchb-codes.js'
-import type { Shipment } from './shipment.js'
+import { addFlag, type Shipment } from './shipment.js'
 
 // A U.S. processing/entry/discharge port must never be a foreign port. Models
 // sometimes place the foreign port of loading (for example "Cat Lai, HCMC, VN")
@@ -11,10 +11,6 @@ const usPortFields = [
   { path: 'entryPort', label: 'Entry port' },
   { path: 'dischargePort', label: 'Port of discharge' },
 ] as const
-
-function addFlag(shipment: Shipment, field: string, message: string): void {
-  if (!shipment.flags.some((flag) => flag.field === field && flag.message === message)) shipment.flags.push({ field, message })
-}
 
 export function sanitizeTransportPorts(shipment: Shipment): void {
   for (const { path, label } of usPortFields) {

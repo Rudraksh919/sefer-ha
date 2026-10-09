@@ -24,6 +24,9 @@ export const partySchema = z.object({
   name: textField,
   address: textField,
   taxId: textField.optional(),
+  city: textField.optional(),
+  // Manufacturer Identification Code, only when a document states one (not the tax ID).
+  mid: textField.optional(),
 })
 
 export const lineItemSchema = z.object({
@@ -34,6 +37,9 @@ export const lineItemSchema = z.object({
   unit: textField,
   value: moneyField,
   manufacturer: partySchema.optional(),
+  // Value of buyer-supplied materials (assists) tied to this line; added to its entered value.
+  assist: moneyField.optional(),
+  grossWeight: quantityField.optional(),
 })
 
 export const conflictSchema = z.object({
@@ -75,6 +81,10 @@ export const shipmentSchema = z.object({
     billOfLading: textField,
     arrivalDate: dateField,
     containers: z.array(textField),
+    masterBill: textField.optional(),
+    masterScac: textField.optional(),
+    houseScac: textField.optional(),
+    packageUnit: textField.optional(),
   }),
   entry: z.object({
     type: textField,
@@ -94,6 +104,10 @@ export const shipmentSchema = z.object({
   flags: z.array(flagSchema).default([]),
 })
 
+export function addFlag(shipment: { flags: ReviewFlag[] }, field: string, message: string): void {
+  if (!shipment.flags.some((flag) => flag.field === field && flag.message === message)) shipment.flags.push({ field, message })
+}
+
 export type Shipment = z.infer<typeof shipmentSchema>
 export type Conflict = z.infer<typeof conflictSchema>
 export type Observation = z.infer<typeof observationSchema>
@@ -110,8 +124,6 @@ export function getExtractedValue(shipment: Shipment, path: string): string | nu
 }
 
 export const requiredShipmentFields = [
-  'importer.name',
-  'importer.taxId',
   'invoice.number',
   'invoice.date',
   'invoice.currency',
@@ -119,6 +131,5 @@ export const requiredShipmentFields = [
   'transport.entryPort',
   'transport.billOfLading',
   'entry.type',
-  'entry.bondType',
   'entry.date',
 ] as const

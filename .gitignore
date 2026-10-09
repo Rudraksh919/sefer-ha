@@ -28,11 +28,5 @@ dist-ssr
 
 graphify-out
 
-# OCR model data (large binary)
-eng.traineddata
-
 # Sample shipping documents
 shipping-docs
-
-IMPLEMENTATION_PLAN.md
-PROGRESS.md

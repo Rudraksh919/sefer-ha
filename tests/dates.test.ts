@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isIsoDate, normalizeDate } from '../src/lib/dates'
+import { isAmbiguousDate, isIsoDate, normalizeDate } from '../src/lib/dates'
 
 describe('date normalization', () => {
   it('keeps ISO dates', () => {
@@ -16,6 +16,13 @@ describe('date normalization', () => {
 
   it('treats the first part as the day when it cannot be a month', () => {
     expect(normalizeDate('25/12/2026')).toBe('2026-12-25')
+  })
+
+  it('uses a not-after date to resolve day/month ambiguity', () => {
+    expect(isAmbiguousDate('12/09/2026')).toBe(true)
+    expect(normalizeDate('12/09/2026')).toBe('2026-12-09')
+    expect(normalizeDate('12/09/2026', '2026-10-14')).toBe('2026-09-12')
+    expect(normalizeDate('05/05/2026')).toBe('2026-05-05')
   })
 
   it('leaves unrecognizable values for manual review', () => {

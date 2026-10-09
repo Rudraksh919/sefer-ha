@@ -1,10 +1,12 @@
 import './app.css'
 import { prepareDocuments } from './lib/document-input.js'
-import { reconcileConflicts } from './lib/conflicts.js'
+import { fieldLabel, reconcileConflicts } from './lib/conflicts.js'
+import { applyEntryDefaults } from './lib/derive.js'
 import { normalizeDate, normalizeShipmentDates } from './lib/dates.js'
 import { resolveForeignPortCode, resolvePortCode } from './lib/netchb-codes.js'
 import { sanitizeTransportPorts } from './lib/sanitize.js'
 import { requiredShipmentFields, shipmentSchema, type Shipment } from './lib/shipment.js'
+import { completionSteps } from './lib/todo.js'
 import { validateShipment, type ValidationIssue } from './lib/validation.js'
 
 type Stage = 'Uploading' | 'Reading documents' | 'Extracting shipment data' | 'Validating extracted data' | 'Ready for review' | 'Generating XML' | 'Validating XML' | 'Complete' | 'Failed'
@@ -24,16 +26,16 @@ const processingMessages: Partial<Record<Stage, string>> = {
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? ''
 const state: State = { stage: 'Uploading', files: [], shipment: null, error: null, message: null, xml: null, validationErrors: [], validationValid: false }
 const field = <T extends string | number>(value: T | null, confidence = value === null ? 0 : 1) => ({ value, confidence })
-const party = () => ({ name: field<string>(null), address: field<string>(null), taxId: field<string>(null) })
+const party = () => ({ name: field<string>(null), address: field<string>(null), taxId: field<string>(null), city: field<string>(null), mid: field<string>(null) })
 
 const reviewGroups: Array<{ legend: string; fields: Array<[string, string, InputType?]> }> = [
   { legend: 'Importer', fields: [['importer.name', 'Importer name'], ['importer.address', 'Importer address'], ['importer.taxId', 'Importer tax ID']] },
   { legend: 'Consignee', fields: [['consignee.name', 'Ultimate consignee'], ['consignee.address', 'Consignee address']] },
   { legend: 'Seller', fields: [['seller.name', 'Seller'], ['seller.address', 'Seller address']] },
   { legend: 'Invoice', fields: [['invoice.number', 'Invoice number'], ['invoice.date', 'Invoice date', 'date'], ['invoice.currency', 'Currency'], ['invoice.incoterm', 'Incoterm']] },
-  { legend: 'Transport', fields: [['transport.processingPort', 'Processing port'], ['transport.entryPort', 'Entry port'], ['transport.loadingPort', 'Port of loading'], ['transport.dischargePort', 'Port of discharge'], ['transport.vessel', 'Vessel'], ['transport.voyage', 'Voyage'], ['transport.billOfLading', 'Bill of lading'], ['transport.arrivalDate', 'Arrival date', 'date']] },
+  { legend: 'Transport', fields: [['transport.processingPort', 'Processing port'], ['transport.entryPort', 'Entry port'], ['transport.loadingPort', 'Port of loading'], ['transport.dischargePort', 'Port of discharge'], ['transport.vessel', 'Vessel'], ['transport.voyage', 'Voyage'], ['transport.billOfLading', 'House bill of lading'], ['transport.houseScac', 'House bill SCAC'], ['transport.masterBill', 'Master bill of lading'], ['transport.masterScac', 'Carrier SCAC'], ['transport.packageUnit', 'Package type'], ['transport.arrivalDate', 'Arrival date', 'date']] },
   { legend: 'Entry', fields: [['entry.type', 'Entry type'], ['entry.bondType', 'Bond type'], ['entry.date', 'Entry date', 'date']] },
-  { legend: 'Shipment totals', fields: [['totals.packages', 'Packages', 'number'], ['totals.grossWeight', 'Gross weight', 'number'], ['totals.freight', 'Freight', 'number'], ['totals.insurance', 'Insurance', 'number'], ['totals.assists', 'Assists', 'number']] },
+  { legend: 'Shipment totals', fields: [['totals.packages', 'Packages', 'number'], ['totals.grossWeight', 'Gross weight', 'number'], ['totals.freight', 'Freight', 'number'], ['totals.insurance', 'Insurance', 'number'], ['totals.assists', 'Assists (total, only if not tied to a line)', 'number']] },
 ]
 
 function emptyShipment(): Shipment {
@@ -48,7 +50,7 @@ function emptyShipment(): Shipment {
 }
 
 function emptyLine() {
-  return { description: field<string>(null), countryOfOrigin: field<string>(null), htsCode: field<string>(null), quantity: field<number>(null), unit: field<string>(null), value: field<number>(null), manufacturer: party() }
+  return { description: field<string>(null), countryOfOrigin: field<string>(null), htsCode: field<string>(null), quantity: field<number>(null), unit: field<string>(null), value: field<number>(null), assist: field<number>(null), grossWeight: field<number>(null), manufacturer: party() }
 }
 
 function escapeHtml(value: unknown): string {
@@ -83,8 +85,17 @@ function getValue(shipment: Shipment, path: string): unknown {
   return path.split('.').reduce<unknown>((value, key) => (value as Record<string, unknown>)?.[key], shipment)
 }
 
+// Optional extracted fields may be absent; give each an empty value so the form can show and edit it.
 function ensureReviewShipment(shipment: Shipment): void {
-  shipment.lines.forEach((line) => { line.manufacturer ??= party() })
+  shipment.importer.taxId ??= field<string>(null)
+  for (const key of ['masterBill', 'masterScac', 'houseScac', 'packageUnit'] as const) shipment.transport[key] ??= field<string>(null)
+  shipment.lines.forEach((line) => {
+    line.manufacturer ??= party()
+    line.manufacturer.city ??= field<string>(null)
+    line.manufacturer.mid ??= field<string>(null)
+    line.assist ??= field<number>(null)
+    line.grossWeight ??= field<number>(null)
+  })
 }
 
 function setValue(path: string, rawValue: string, type: InputType): void {
@@ -137,7 +148,7 @@ function bondTypeControl(path: string, value: unknown): string {
 }
 
 function lineMarkup(index: number, issues: IssueMap): string {
-  return `<fieldset><div class="section-heading"><legend>Invoice line ${index + 1}</legend><button type="button" class="secondary" data-remove-line="${index}" ${state.shipment!.lines.length === 1 ? 'disabled' : ''}>Remove line</button></div><div class="form-grid lines">${input(`lines.${index}.description`, 'Description', 'text', issues)}${input(`lines.${index}.countryOfOrigin`, 'Country of origin', 'text', issues)}${input(`lines.${index}.htsCode`, 'HTS code', 'text', issues)}${input(`lines.${index}.quantity`, 'Quantity', 'number', issues)}${input(`lines.${index}.unit`, 'Unit', 'text', issues)}${input(`lines.${index}.value`, 'Value', 'number', issues)}${input(`lines.${index}.manufacturer.name`, 'Manufacturer name', 'text', issues)}${input(`lines.${index}.manufacturer.address`, 'Manufacturer address', 'text', issues)}${input(`lines.${index}.manufacturer.taxId`, 'Manufacturer tax ID', 'text', issues)}</div></fieldset>`
+  return `<fieldset><div class="section-heading"><legend>Invoice line ${index + 1}</legend><button type="button" class="secondary" data-remove-line="${index}" ${state.shipment!.lines.length === 1 ? 'disabled' : ''}>Remove line</button></div><div class="form-grid lines">${input(`lines.${index}.description`, 'Description', 'text', issues)}${input(`lines.${index}.countryOfOrigin`, 'Country of origin', 'text', issues)}${input(`lines.${index}.htsCode`, 'HTS code', 'text', issues)}${input(`lines.${index}.quantity`, 'Quantity', 'number', issues)}${input(`lines.${index}.unit`, 'Unit', 'text', issues)}${input(`lines.${index}.value`, 'Value (USD)', 'number', issues)}${input(`lines.${index}.assist`, 'Assist added to value (USD)', 'number', issues)}${input(`lines.${index}.grossWeight`, 'Gross weight (kg)', 'number', issues)}${input(`lines.${index}.manufacturer.name`, 'Manufacturer name', 'text', issues)}${input(`lines.${index}.manufacturer.address`, 'Manufacturer address', 'text', issues)}${input(`lines.${index}.manufacturer.city`, 'Manufacturer city', 'text', issues)}${input(`lines.${index}.manufacturer.mid`, 'Manufacturer ID (MID), if known', 'text', issues)}${input(`lines.${index}.manufacturer.taxId`, 'Manufacturer tax ID (not sent)', 'text', issues)}</div></fieldset>`
 }
 
 function reviewMarkup(shipment: Shipment): string {
@@ -146,8 +157,9 @@ function reviewMarkup(shipment: Shipment): string {
   const issueMap: IssueMap = new Map(issues.map((issue) => [issue.path, issue]))
   const errors = issues.filter((issue) => issue.severity === 'error')
   const warnings = issues.filter((issue) => issue.severity === 'warning')
-  const conflicts = shipment.conflicts.map((conflict) => `<li><strong>${escapeHtml(conflict.field)}</strong>: ${escapeHtml(conflict.values.join(' / '))}</li>`).join('')
-  const flags = shipment.flags.map((flag) => `<li><strong>${escapeHtml(flag.field)}</strong>: ${escapeHtml(flag.message)}</li>`).join('')
+  const conflicts = shipment.conflicts.map((conflict) => `<li><strong>${escapeHtml(fieldLabel(conflict.field))}</strong>: ${escapeHtml(conflict.values.join(' / '))}</li>`).join('')
+  const flags = shipment.flags.map((flag) => `<li><strong>${escapeHtml(fieldLabel(flag.field))}</strong>: ${escapeHtml(flag.message)}</li>`).join('')
+  const steps = completionSteps(shipment).map((step) => `<li>${escapeHtml(step)}</li>`).join('')
   const groups = reviewGroups.map((group) => `<fieldset><legend>${group.legend}</legend><div class="form-grid">${group.fields.map(([path, label, type]) => input(path, label, type, issueMap)).join('')}</div></fieldset>`).join('')
   const containers = shipment.transport.containers.map((container) => container.value).filter(Boolean).join(', ')
   const issuesNotice = issues.length
@@ -156,7 +168,7 @@ function reviewMarkup(shipment: Shipment): string {
   const result = state.xml && state.validationValid
     ? `<section class="xml-result"><div class="section-heading"><h2>Validated NetCHB XML</h2><div class="actions"><button type="button" id="copy-xml" class="secondary">Copy XML</button><button type="button" id="download-xml">Download XML</button></div></div><pre><code>${escapeHtml(state.xml)}</code></pre></section>`
     : ''
-  return `<section class="review"><div class="section-heading"><div><p class="eyebrow">Review</p><h2>Confirm shipment data</h2></div><button type="button" id="reset-review" class="secondary">Reset</button></div>${issuesNotice}${conflicts ? `<aside class="notice warning"><strong>Conflicts across documents</strong><ul>${conflicts}</ul></aside>` : ''}${flags ? `<aside class="notice warning"><strong>Review notes</strong><ul>${flags}</ul></aside>` : ''}${groups}<fieldset><legend>Containers</legend><label class="field"><span>Container numbers</span><input id="containers" value="${escapeHtml(containers)}" placeholder="Comma-separated"><small>One or more container numbers, if present on the bill of lading.</small></label></fieldset>${shipment.lines.map((_, index) => lineMarkup(index, issueMap)).join('')}<div class="actions"><button type="button" id="add-line" class="secondary">Add invoice line</button><button type="button" id="generate-xml">Generate NetCHB XML</button></div>${state.validationErrors.length ? `<aside class="notice error"><strong>XML validation errors</strong><ul>${state.validationErrors.map((error) => `<li>${escapeHtml(error)}</li>`).join('')}</ul></aside>` : ''}${result}</section>`
+  return `<section class="review"><div class="section-heading"><div><p class="eyebrow">Review</p><h2>Confirm shipment data</h2></div><button type="button" id="reset-review" class="secondary">Reset</button></div>${issuesNotice}${conflicts ? `<aside class="notice warning"><strong>Conflicts across documents</strong><ul>${conflicts}</ul></aside>` : ''}${flags ? `<aside class="notice warning"><strong>Review notes</strong><ul>${flags}</ul></aside>` : ''}${steps ? `<aside class="notice warning"><strong>Steps to complete before filing</strong><ul>${steps}</ul></aside>` : ''}${groups}<fieldset><legend>Containers</legend><label class="field"><span>Container numbers</span><input id="containers" value="${escapeHtml(containers)}" placeholder="Comma-separated"><small>One or more container numbers, if present on the bill of lading.</small></label></fieldset>${shipment.lines.map((_, index) => lineMarkup(index, issueMap)).join('')}<div class="actions"><button type="button" id="add-line" class="secondary">Add invoice line</button><button type="button" id="generate-xml">Generate NetCHB XML</button></div>${state.validationErrors.length ? `<aside class="notice error"><strong>XML validation errors</strong><ul>${state.validationErrors.map((error) => `<li>${escapeHtml(error)}</li>`).join('')}</ul></aside>` : ''}${result}</section>`
 }
 
 function render(): void {
@@ -218,6 +230,7 @@ async function extract(): Promise<void> {
     const shipment = shipmentSchema.parse(result.shipment)
     normalizeShipmentDates(shipment)
     sanitizeTransportPorts(shipment)
+    applyEntryDefaults(shipment)
     shipment.conflicts = reconcileConflicts(shipment)
     ensureReviewShipment(shipment)
     state.shipment = shipment

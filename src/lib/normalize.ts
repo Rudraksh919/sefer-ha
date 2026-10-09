@@ -6,7 +6,7 @@
 // are compared across documents so that genuine disagreements are detected and
 // OCR noise is not reported as a conflict.
 
-export type ValueKind = 'text' | 'code' | 'numeric'
+export type ValueKind = 'text' | 'code' | 'numeric' | 'amount'
 
 // Letters OCR commonly produces in place of digits inside numeric identifiers.
 const ocrDigitEquivalents: Record<string, string> = {
@@ -24,15 +24,22 @@ const ocrDigitEquivalents: Record<string, string> = {
 export function normalizeValue(value: string, kind: ValueKind = 'text'): string {
   const collapsed = value.trim().replace(/\s+/g, ' ')
   if (kind === 'text') return collapsed.toUpperCase()
+  // Quantities, weights, and money: "1,930.000 KGS" and "1930" are the same amount.
+  if (kind === 'amount') {
+    const amount = parseFloat(collapsed.replace(/[^\d.-]/g, ''))
+    return Number.isFinite(amount) ? String(amount) : collapsed.toUpperCase()
+  }
   const compact = collapsed.toUpperCase().replace(/[^A-Z0-9]/g, '')
   return kind === 'numeric' ? compact.replace(/[A-Z]/g, (character) => ocrDigitEquivalents[character] ?? character) : compact
 }
 
-const numericFields = new Set(['processingport', 'entryport', 'loadingport', 'dischargeport', 'htscode', 'taxid', 'bondtype', 'type', 'value', 'quantity', 'packages', 'grossweight', 'freight', 'insurance', 'assists'])
+const numericFields = new Set(['processingport', 'entryport', 'loadingport', 'dischargeport', 'htscode', 'taxid', 'bondtype', 'type'])
+const amountFields = new Set(['value', 'quantity', 'packages', 'grossweight', 'freight', 'insurance', 'assists', 'assist'])
 const codeFields = new Set(['number', 'billoflading', 'containers', 'container', 'voyage', 'voyageno'])
 
 export function valueKindForField(field: string): ValueKind {
   const leaf = field.split('.').pop()?.replace(/[^a-z]/gi, '').toLowerCase() ?? ''
+  if (amountFields.has(leaf)) return 'amount'
   if (numericFields.has(leaf)) return 'numeric'
   if (codeFields.has(leaf)) return 'code'
   return 'text'

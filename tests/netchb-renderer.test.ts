@@ -55,7 +55,7 @@ describe('NetCHB XML renderer', () => {
 
 
   it('reports missing required review fields', () => {
-    const result = renderNetchbXml({ ...shipment, entry: { ...shipment.entry, bondType: field(null, 0) } })
-    expect('errors' in result && result.errors).toContain('entry.bondType')
+    const result = renderNetchbXml({ ...shipment, entry: { ...shipment.entry, type: field(null, 0) } })
+    expect('errors' in result && result.errors).toContain('entry.type')
   })
 })

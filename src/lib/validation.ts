@@ -1,6 +1,6 @@
 import { getExtractedValue, requiredShipmentFields, type ExtractedField, type Shipment } from './shipment.js'
 import { isIsoDate, shipmentDatePaths } from './dates.js'
-import { isValidBondType, isValidEntryType, isValidUsPortCode, resolveCountryCode, resolveForeignPortCode, resolvePortCode } from './netchb-codes.js'
+import { isValidBondType, isValidEntryType, isValidUsPortCode, resolveCountryCode, containerCheckDigit, findCountryCode, resolveForeignPortCode, resolvePortCode, resolveUnit } from './netchb-codes.js'
 
 export type ValidationSeverity = 'error' | 'warning'
 
@@ -35,8 +35,8 @@ export function validateShipment(shipment: Shipment): ValidationIssue[] {
   checkText('importer.name', shipment.importer.name.value, 'Importer name')
   checkText('importer.address', shipment.importer.address.value, 'Importer address')
   checkText('importer.taxId', shipment.importer.taxId?.value, 'Importer tax ID')
-  if (shipment.importer.taxId?.value != null && !/^[A-Za-z0-9-]{2,20}$/.test(shipment.importer.taxId.value.trim())) {
-    add('importer.taxId', 'Importer tax ID should contain only letters, numbers, and hyphens.')
+  if (shipment.importer.taxId?.value != null && !/^(\d{2}-\d{7}[\dA-Za-z]{0,2}|\d{6}-\d{5}|\d{3}-\d{2}-\d{4})$/.test(shipment.importer.taxId.value.trim())) {
+    add('importer.taxId', 'Importer tax ID must look like 12-3456789 (EIN), 123-45-6789 (SSN), or 123456-12345 (CBP-assigned number).')
   }
   checkText('consignee.name', shipment.consignee.name.value, 'Consignee name')
   checkText('consignee.address', shipment.consignee.address.value, 'Consignee address')
@@ -58,7 +58,7 @@ export function validateShipment(shipment: Shipment): ValidationIssue[] {
     if (value != null && !resolvePortCode(value)) add(path, 'Not a recognized 4-digit CBP port code or known port name; select a valid code.', severity)
   }
   if (shipment.transport.loadingPort.value != null && !resolveForeignPortCode(shipment.transport.loadingPort.value)) {
-    add('transport.loadingPort', 'Enter a 5-digit CBP Schedule K foreign port code or clear the field.')
+    add('transport.loadingPort', 'No Schedule K code found for this port, so lading-port is left out. Enter the 5-digit code to include it.', 'warning')
   }
   checkText('transport.vessel', shipment.transport.vessel.value, 'Vessel', 'warning')
   checkText('transport.voyage', shipment.transport.voyage.value, 'Voyage', 'warning')
@@ -69,6 +69,7 @@ export function validateShipment(shipment: Shipment): ValidationIssue[] {
   shipment.transport.containers.forEach((container: ExtractedField<string>, index: number) => {
     const value = container.value?.replace(/\s+/g, '').toUpperCase()
     if (value != null && !/^[A-Z]{4}\d{7}$/.test(value)) add(`transport.containers.${index}`, 'Container number should match ISO 6346 format, for example MSKU1234567.', 'warning')
+    else if (value != null && containerCheckDigit(value) !== Number(value[10])) add(`transport.containers.${index}`, `Container check digit is wrong (expected ${containerCheckDigit(value)}); a character was probably misread, so compare it with the document.`, 'warning')
   })
 
   const bondType = shipment.entry.bondType.value
@@ -99,13 +100,18 @@ export function validateShipment(shipment: Shipment): ValidationIssue[] {
 
     checkPositive(`lines.${index}.quantity`, line.quantity.value, 'Quantity')
     checkText(`lines.${index}.unit`, line.unit.value, 'Unit')
-    if (line.unit.value != null && !/^[A-Za-z0-9]{1,10}$/.test(line.unit.value.trim())) add(`lines.${index}.unit`, 'Unit should be a short unit code, for example PCS.', 'warning')
+    if (line.unit.value != null && !resolveUnit(line.unit.value)) add(`lines.${index}.unit`, 'Unit is not a NetCHB unit code (for example PCS, DOZ, KG, PRS), so the tariff quantity is left out.', 'warning')
     if (line.value.value == null) add(`lines.${index}.value`, 'Line value is required.')
     else checkMoney(`lines.${index}.value`, line.value.value, 'Line value')
 
     if (line.manufacturer) {
       checkText(`lines.${index}.manufacturer.name`, line.manufacturer.name.value, 'Manufacturer name', 'warning')
       checkText(`lines.${index}.manufacturer.address`, line.manufacturer.address.value, 'Manufacturer address', 'warning')
+      const makerCountry = findCountryCode(line.manufacturer.address.value)
+      const origin = resolveCountryCode(line.countryOfOrigin.value)
+      if (makerCountry && origin && makerCountry !== origin) add(`lines.${index}.manufacturer.address`, `The manufacturer address is in ${makerCountry} but this line's country of origin is ${origin}. Confirm the manufacturer and the origin for this line.`, 'warning')
+      const mid = line.manufacturer.mid?.value
+      if (mid != null && !/^[A-Za-z]{2}[A-Za-z0-9]{1,13}$/.test(mid.trim())) add(`lines.${index}.manufacturer.mid`, 'A MID starts with the 2-letter country code (for example VNSAIPHO7892DIA); it is ignored and a MID is built from the manufacturer details instead.', 'warning')
     }
   })
 

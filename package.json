@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && tsc -p tsconfig.server.json && vite build",
     "preview": "vite preview",
-    "api": "tsx server.ts",
+    "api": "tsx watch server.ts",
     "test": "vitest run"
   },
   "devDependencies": {

@@ -29,9 +29,9 @@ describe('shipment validation', () => {
     expect(errorPaths(validateShipment(value))).toContain('entry.bondType')
   })
 
-  it('flags a missing bond type so the user must choose one', () => {
+  it('does not block on a missing bond type (optional in the XSD)', () => {
     const value = shipment({ entry: { type: field('01'), bondType: field(null, 0), date: field('2026-10-14') } })
-    expect(errorPaths(validateShipment(value))).toContain('entry.bondType')
+    expect(errorPaths(validateShipment(value))).not.toContain('entry.bondType')
   })
 
   it('surfaces an unresolvable port instead of guessing', () => {
@@ -39,9 +39,10 @@ describe('shipment validation', () => {
     expect(errorPaths(validateShipment(value))).toContain('transport.processingPort')
   })
 
-  it('requires a Schedule K code for the foreign port of loading', () => {
+  it('warns, without blocking, when the foreign port of loading has no Schedule K code', () => {
     const value = shipment({ transport: { ...shipment().transport, loadingPort: field('Atlantis') } })
-    expect(errorPaths(validateShipment(value))).toContain('transport.loadingPort')
+    expect(errorPaths(validateShipment(value))).not.toContain('transport.loadingPort')
+    expect(validateShipment(value).some((issue) => issue.path === 'transport.loadingPort')).toBe(true)
   })
 
   it('flags an unknown country of origin', () => {
