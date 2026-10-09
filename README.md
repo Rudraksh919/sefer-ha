@@ -102,6 +102,15 @@ Extraction quality is mostly down to the model.
 - Currently its using `Openrouter/free` models.
 - A 402 error means the model needs credits on your OpenRouter account.
 
+## Hosting notes
+
+The live demo runs the front end on Vercel and the API on Render's free plan. A few things follow from that:
+
+- **Expect a slow first request.** Render's free plan puts the API to sleep after about 15 minutes without traffic. The next request wakes it, but booting takes roughly 30-60 seconds, and that first request often fails with a 502/503 or a network error. This is the "API error" you may see on a cold start. The request still wakes the server, so retrying after a minute works.
+- **Extraction itself is slow on a free model.** It can take 5-10 minutes, and the app says so while it works. Keep the tab open.
+- **Point the front end at the API** with `VITE_API_BASE_URL` (set it in Vercel to the Render URL). CORS is already enabled on the API.
+- **Ways to avoid the cold start** (not built yet): call a small health endpoint when the page opens so the API wakes up before anyone uploads; retry automatically after a 502/503; ping the API every 10 minutes from a free uptime monitor (Render's free plan has enough instance hours to keep one service up all month); or use a paid always-on instance.
+
 ## What it doesn't do (yet)
 
 - **One invoice per entry.** Several invoices in one upload aren't split apart.

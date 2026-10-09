@@ -41,3 +41,5 @@ legend { color: var(--text-h); font-weight: 600; padding: 0 .25rem; }
 .lines .field { margin: 0; }
 .xml-result { margin-top: 1.5rem; }
 .xml-result pre { background: #17202a; border-radius: .4rem; color: #f7f9fb; max-height: 28rem; overflow: auto; padding: 1rem; white-space: pre-wrap; }
+
+.hint { color: var(--text); font-size: .9rem; }
